@@ -28,7 +28,8 @@ let game = {
     adTimer: 0,
     frame: 0,
     orbsCollected: 0,
-    totalOrbs: 0
+    totalOrbs: 0,
+    debugMode: false
 };
 
 const LANES = [canvas.width / 6, canvas.width / 2, canvas.width * 5 / 6];
@@ -82,6 +83,8 @@ function initLevel() {
     }
     
     console.log('[GAME] Level initialized:', game.orbs.length, 'orbs,', game.obstacles.length, 'obstacles');
+    console.log('[DEBUG] First 5 obstacles:', game.obstacles.slice(0, 5).map(o => `Lane ${o.lane}, Y: ${o.y}`));
+    console.log('[DEBUG] Player starts at Y:', game.player.y, 'Distance:', game.player.distance);
 }
 
 function showAd(reason) {
@@ -229,24 +232,28 @@ function draw() {
         }
     });
     
-    // Obstacles - BIG AND VISIBLE (optimized)
+    // Obstacles - ALWAYS VISIBLE with debug info
+    let visibleObstacles = 0;
     game.obstacles.forEach(obs => {
         if (obs.hit) return;
         const y = obs.y - game.player.distance + game.player.y;
-        if (y > -100 && y < canvas.height + 100) {
+        
+        // Extended visibility range
+        if (y > -200 && y < canvas.height + 200) {
+            visibleObstacles++;
             const x = LANES[obs.lane];
             
             // Shadow
             ctx.fillStyle = 'rgba(0,0,0,0.3)';
             ctx.fillRect(x - 32, y + 35, 64, 10);
             
-            // Main red block
+            // Main red block - VERY BRIGHT
             ctx.fillStyle = '#FF0000';
             ctx.fillRect(x - 35, y - 35, 70, 70);
             
-            // Yellow warning border
+            // Yellow warning border - THICK
             ctx.strokeStyle = '#FFFF00';
-            ctx.lineWidth = 5;
+            ctx.lineWidth = 6;
             ctx.strokeRect(x - 35, y - 35, 70, 70);
             
             // Warning stripes
@@ -261,10 +268,30 @@ function draw() {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('!', x, y);
+            
+            // Debug mode - show collision box
+            if (game.debugMode) {
+                ctx.strokeStyle = '#00FF00';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x - 40, y - 40, 80, 80);
+                ctx.fillStyle = '#00FF00';
+                ctx.font = '12px Arial';
+                ctx.fillText(`Y:${Math.floor(obs.y)}`, x, y - 50);
+            }
         }
     });
     
-    // Player
+    // Debug info
+    if (game.debugMode) {
+        ctx.fillStyle = '#00FF00';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Visible obstacles: ${visibleObstacles}`, 10, canvas.height - 60);
+        ctx.fillText(`Player Y: ${Math.floor(game.player.distance + game.player.y)}`, 10, canvas.height - 40);
+        ctx.fillText(`Total obstacles: ${game.obstacles.length}`, 10, canvas.height - 20);
+    }
+    
+    // Player (always on top)
     const px = LANES[game.player.lane];
     const py = game.player.y;
     const skinColor = SKINS[game.currentSkin].color;
@@ -302,6 +329,13 @@ function draw() {
     ctx.beginPath();
     ctx.arc(px, py + 2, 10, 0.2, Math.PI - 0.2);
     ctx.stroke();
+    
+    // Debug - show collision box
+    if (game.debugMode) {
+        ctx.strokeStyle = '#FF00FF';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px - 40, py - 40, 80, 80);
+    }
     
     // Game over
     if (game.gameOver && !game.showAd) {
@@ -435,6 +469,17 @@ document.getElementById('boostBtn').addEventListener('touchend', (e) => {
     game.player.boosting = false;
 });
 
+// Shop button
+document.getElementById('shopBtn').addEventListener('click', (e) => {
+    e.preventDefault();
+    game.showShop = !game.showShop;
+});
+
+document.getElementById('shopBtn').addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    game.showShop = !game.showShop;
+});
+
 // Keyboard
 document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowLeft' && game.player.lane > 0) game.player.lane--;
@@ -448,7 +493,14 @@ document.addEventListener('keydown', (e) => {
         }
     }
     if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
         game.showShop = !game.showShop;
+        console.log('[SHOP] Shop toggled:', game.showShop ? 'OPEN' : 'CLOSED');
+    }
+    if (e.key === 'd' || e.key === 'D') {
+        e.preventDefault();
+        game.debugMode = !game.debugMode;
+        console.log('[DEBUG] Debug mode:', game.debugMode ? 'ON' : 'OFF');
     }
 });
 
@@ -487,6 +539,12 @@ canvas.addEventListener('click', (e) => {
 // Start game
 initLevel();
 requestAnimationFrame(gameLoop);
-console.log('[GAME] Magno.bp loaded! Controls: ◀ ⚡ ▶ or Arrow Keys + Space');
-console.log('[GAME] Collision detection: Precise 40px radius');
-console.log('[GAME] Obstacles never overlap with orbs (150px safety margin)');
+console.log('[GAME] Magno.bp loaded!');
+console.log('[CONTROLS] Mobile: ◀ ⚡ ▶ buttons');
+console.log('[CONTROLS] Desktop: Arrow Keys + Space');
+console.log('[CONTROLS] S = Open Shop');
+console.log('[CONTROLS] D = Toggle Debug Mode');
+console.log('[GAME] Collision: 40px radius');
+console.log('[GAME] Obstacles never overlap with orbs (150px margin)');
+console.log('[SHOP] Press S to open shop anytime!');
+console.log('[DEBUG] Press D to see collision boxes and debug info');
