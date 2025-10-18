@@ -1,188 +1,145 @@
-// Magno.bp - Mobile Web Game
-// Ad Link
+// Magno.bp - Mobile Web Game (Fixed Version)
 const AD_LINK = "https://www.effectivegatecpm.com/ehtjvsm8a?key=a81e51f36bc8eba806fbf695f06bd3f8";
 
 // Canvas setup
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Responsive canvas
 function resizeCanvas() {
-    const maxWidth = 400;
-    const maxHeight = 800;
-    const windowRatio = window.innerWidth / window.innerHeight;
-    const gameRatio = maxWidth / maxHeight;
-    
-    if (windowRatio > gameRatio) {
-        canvas.height = Math.min(window.innerHeight, maxHeight);
-        canvas.width = canvas.height * gameRatio;
-    } else {
-        canvas.width = Math.min(window.innerWidth, maxWidth);
-        canvas.height = canvas.width / gameRatio;
-    }
+    canvas.width = Math.min(400, window.innerWidth);
+    canvas.height = Math.min(800, window.innerHeight);
 }
-
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
 // Game state
-let gameState = {
+let game = {
     level: 1,
-    tokens: 0,
-    player: {
-        lane: 1,
-        y: canvas.height / 2,
-        tier: 0,
-        distance: 0,
-        speed: 5,
-        boosting: false
-    },
+    tokens: parseInt(localStorage.getItem('tokens')) || 0,
+    currentSkin: parseInt(localStorage.getItem('currentSkin')) || 0,
+    ownedSkins: JSON.parse(localStorage.getItem('ownedSkins')) || [0],
+    player: { lane: 1, y: 400, tier: 0, distance: 0, speed: 5, boosting: false },
     orbs: [],
     obstacles: [],
     gameOver: false,
     won: false,
     showAd: false,
-    adTimer: 0
+    showShop: false,
+    adTimer: 0,
+    frame: 0
 };
 
 const LANES = [canvas.width / 6, canvas.width / 2, canvas.width * 5 / 6];
-const TIERS = [
-    { name: 'Tiny', color: '#6496FF' },
-    { name: 'Double', color: '#3264FF' },
-    { name: 'Swift', color: '#00C8FF' },
-    { name: 'Shield', color: '#96FFA0' },
-    { name: 'Cosmic', color: '#FF64FF' }
+const SKINS = [
+    { name: 'Classic', cost: 0, color: '#6496FF' },
+    { name: 'Fire', cost: 150, color: '#FF6400' },
+    { name: 'Toxic', cost: 400, color: '#00FF64' },
+    { name: 'Galaxy', cost: 800, color: '#9600FF' },
+    { name: 'Gold', cost: 1500, color: '#FFD700' }
 ];
 
-// Initialize level
 function initLevel() {
-    gameState.orbs = [];
-    gameState.obstacles = [];
-    gameState.player.distance = 0;
-    gameState.gameOver = false;
-    gameState.won = false;
+    game.orbs = [];
+    game.obstacles = [];
+    game.player.distance = 0;
+    game.player.tier = 0;
+    game.gameOver = false;
+    game.won = false;
     
     // Generate orbs
-    for (let i = 0; i < 50; i++) {
-        gameState.orbs.push({
+    for (let i = 0; i < 40; i++) {
+        game.orbs.push({
             lane: Math.floor(Math.random() * 3),
-            y: i * 150 + 300,
-            tier: Math.floor(Math.random() * 3),
+            y: i * 200 + 500,
             collected: false
         });
     }
     
-    // Generate obstacles (smart placement - always visible)
-    const finishLine = 5000 + gameState.level * 500;
-    const obstacleCount = 30 + gameState.level * 2;
-    
-    for (let i = 0; i < obstacleCount; i++) {
-        const y = 1000 + (i * 200) + Math.random() * 100;
-        
-        // Block 1 or 2 lanes randomly (never all 3)
-        const blockedLanes = Math.random() < 0.6 ? 1 : 2;
-        const availableLanes = [0, 1, 2];
-        const selectedLanes = [];
-        
-        for (let j = 0; j < blockedLanes; j++) {
-            const randomIndex = Math.floor(Math.random() * availableLanes.length);
-            selectedLanes.push(availableLanes[randomIndex]);
-            availableLanes.splice(randomIndex, 1);
-        }
-        
-        selectedLanes.forEach(lane => {
-            gameState.obstacles.push({ lane, y, hit: false });
-        });
+    // Generate obstacles - ALWAYS VISIBLE
+    for (let i = 0; i < 25; i++) {
+        const y = 1200 + i * 250;
+        const lane = Math.floor(Math.random() * 3);
+        game.obstacles.push({ lane, y, hit: false });
     }
+    
+    console.log('[GAME] Level initialized with', game.obstacles.length, 'obstacles');
 }
 
-// Show ad
 function showAd(reason) {
-    console.log(`[AD] Showing ad - ${reason}`);
-    gameState.showAd = true;
-    gameState.adTimer = 180;
-    
-    // Open ad in new tab
+    console.log('[AD] Opening ad -', reason);
+    game.showAd = true;
+    game.adTimer = 180;
     window.open(AD_LINK, '_blank');
+    document.getElementById('adOverlay').style.display = 'flex';
     
-    // Show overlay
-    const overlay = document.getElementById('adOverlay');
-    overlay.style.display = 'flex';
-    
-    // Countdown
-    const timerEl = document.getElementById('adTimer');
     const interval = setInterval(() => {
-        gameState.adTimer--;
-        timerEl.textContent = Math.ceil(gameState.adTimer / 60);
-        
-        if (gameState.adTimer <= 0) {
+        game.adTimer--;
+        document.getElementById('adTimer').textContent = Math.ceil(game.adTimer / 60);
+        if (game.adTimer <= 0) {
             clearInterval(interval);
-            overlay.style.display = 'none';
-            gameState.showAd = false;
+            document.getElementById('adOverlay').style.display = 'none';
+            game.showAd = false;
         }
     }, 1000 / 60);
 }
 
-// Update game
 function update() {
-    if (gameState.gameOver || gameState.showAd) return;
+    if (game.gameOver || game.showAd || game.showShop) return;
     
-    const speed = gameState.player.boosting ? gameState.player.speed * 1.5 : gameState.player.speed;
-    gameState.player.distance += speed;
+    game.frame++;
+    const speed = game.player.boosting ? game.player.speed * 1.5 : game.player.speed;
+    game.player.distance += speed;
     
-    // Check orb collection
-    gameState.orbs.forEach(orb => {
-        if (!orb.collected && orb.lane === gameState.player.lane) {
-            const dist = Math.abs(orb.y - gameState.player.distance - gameState.player.y);
+    // Collect orbs
+    game.orbs.forEach(orb => {
+        if (!orb.collected && orb.lane === game.player.lane) {
+            const dist = Math.abs(orb.y - game.player.distance - game.player.y);
             if (dist < 50) {
                 orb.collected = true;
-                if (gameState.player.tier < 4) gameState.player.tier++;
+                if (game.player.tier < 4) game.player.tier++;
             }
         }
     });
     
-    // Check obstacle collision (more accurate)
-    gameState.obstacles.forEach(obs => {
-        if (!obs.hit && obs.lane === gameState.player.lane) {
-            const obstacleY = obs.y - gameState.player.distance;
-            const dist = Math.abs(obstacleY - gameState.player.y);
-            if (dist < 45) {
+    // Check collisions
+    game.obstacles.forEach(obs => {
+        if (!obs.hit && obs.lane === game.player.lane) {
+            const obstacleScreenY = obs.y - game.player.distance + game.player.y;
+            const dist = Math.abs(obstacleScreenY - game.player.y);
+            if (dist < 50) {
                 obs.hit = true;
-                gameState.gameOver = true;
-                console.log('[GAME] Crashed into obstacle!');
-                showAd('crash');
+                game.gameOver = true;
+                console.log('[GAME] CRASHED!');
+                setTimeout(() => showAd('crash'), 100);
             }
         }
     });
     
     // Check win
-    const finishLine = 5000 + gameState.level * 500;
-    if (gameState.player.distance >= finishLine) {
-        gameState.won = true;
-        gameState.gameOver = true;
-        gameState.tokens += 10 + gameState.level * 5;
-        showAd('win');
-        
+    const finishLine = 6000;
+    if (game.player.distance >= finishLine) {
+        game.won = true;
+        game.gameOver = true;
+        const reward = 10 + game.level * 5;
+        game.tokens += reward;
+        localStorage.setItem('tokens', game.tokens);
+        console.log('[GAME] Level complete! +' + reward + ' tokens');
         setTimeout(() => {
-            if (!gameState.showAd) {
-                gameState.level++;
-                gameState.player.tier = 0;
+            showAd('win');
+            setTimeout(() => {
+                game.level++;
                 initLevel();
-            }
-        }, 3000);
+            }, 3000);
+        }, 100);
     }
 }
 
-// Draw game
 function draw() {
-    // Clear with gradient background
-    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    gradient.addColorStop(0, '#0f0520');
-    gradient.addColorStop(1, '#1a0a2e');
-    ctx.fillStyle = gradient;
+    // Background
+    ctx.fillStyle = '#0a0514';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Draw lanes
+    // Lanes
     ctx.strokeStyle = '#3c3c50';
     ctx.lineWidth = 2;
     LANES.forEach(x => {
@@ -192,153 +149,255 @@ function draw() {
         ctx.stroke();
     });
     
-    // Draw orbs
-    gameState.orbs.forEach(orb => {
+    // Orbs
+    game.orbs.forEach(orb => {
         if (orb.collected) return;
-        const y = orb.y - gameState.player.distance + gameState.player.y;
+        const y = orb.y - game.player.distance + game.player.y;
         if (y > -50 && y < canvas.height + 50) {
-            ctx.fillStyle = TIERS[orb.tier].color;
+            ctx.fillStyle = '#00C8FF';
             ctx.beginPath();
-            ctx.arc(LANES[orb.lane], y, 12, 0, Math.PI * 2);
+            ctx.arc(LANES[orb.lane], y, 15, 0, Math.PI * 2);
             ctx.fill();
             ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 3;
             ctx.stroke();
         }
     });
     
-    // Draw obstacles (red blocks)
-    gameState.obstacles.forEach(obs => {
+    // Obstacles - BIG AND VISIBLE
+    game.obstacles.forEach(obs => {
         if (obs.hit) return;
-        const y = obs.y - gameState.player.distance + gameState.player.y;
+        const y = obs.y - game.player.distance + game.player.y;
         if (y > -100 && y < canvas.height + 100) {
             const x = LANES[obs.lane];
             
-            // Red danger block
-            ctx.fillStyle = '#ff3232';
-            ctx.fillRect(x - 30, y - 30, 60, 60);
+            // Shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.fillRect(x - 32, y + 35, 64, 10);
+            
+            // Main red block
+            ctx.fillStyle = '#FF0000';
+            ctx.fillRect(x - 35, y - 35, 70, 70);
             
             // Yellow warning border
-            ctx.strokeStyle = '#ffc800';
-            ctx.lineWidth = 4;
-            ctx.strokeRect(x - 28, y - 28, 56, 56);
+            ctx.strokeStyle = '#FFFF00';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(x - 35, y - 35, 70, 70);
             
             // Warning stripes
-            ctx.fillStyle = '#ffc800';
-            ctx.fillRect(x - 25, y - 25, 50, 10);
-            ctx.fillRect(x - 25, y, 50, 10);
+            ctx.fillStyle = '#FFFF00';
+            for (let i = 0; i < 3; i++) {
+                ctx.fillRect(x - 30, y - 25 + i * 20, 60, 8);
+            }
             
             // Danger symbol
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 24px Arial';
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 32px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('!', x, y);
         }
     });
     
-    // Draw player
-    const px = LANES[gameState.player.lane];
-    const py = gameState.player.y;
-    ctx.fillStyle = TIERS[gameState.player.tier].color;
-    ctx.beginPath();
-    ctx.arc(px, py, 20, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 3;
-    ctx.stroke();
+    // Player
+    const px = LANES[game.player.lane];
+    const py = game.player.y;
+    const skinColor = SKINS[game.currentSkin].color;
     
-    // Draw eyes
+    // Glow
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = skinColor;
+    ctx.fillStyle = skinColor;
+    ctx.beginPath();
+    ctx.arc(px, py, 25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    
+    // Body
+    ctx.fillStyle = skinColor;
+    ctx.beginPath();
+    ctx.arc(px, py, 22, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Eyes
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.arc(px - 6, py - 5, 4, 0, Math.PI * 2);
-    ctx.arc(px + 6, py - 5, 4, 0, Math.PI * 2);
+    ctx.arc(px - 7, py - 6, 5, 0, Math.PI * 2);
+    ctx.arc(px + 7, py - 6, 5, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.arc(px - 6, py - 5, 2, 0, Math.PI * 2);
-    ctx.arc(px + 6, py - 5, 2, 0, Math.PI * 2);
+    ctx.arc(px - 7, py - 6, 3, 0, Math.PI * 2);
+    ctx.arc(px + 7, py - 6, 3, 0, Math.PI * 2);
     ctx.fill();
     
-    // Game over screen
-    if (gameState.gameOver && !gameState.showAd) {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    // Smile
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(px, py + 2, 10, 0.2, Math.PI - 0.2);
+    ctx.stroke();
+    
+    // Game over
+    if (game.gameOver && !game.showAd) {
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        ctx.fillStyle = gameState.won ? '#64ff64' : '#ff6464';
-        ctx.font = 'bold 36px Arial';
+        ctx.fillStyle = game.won ? '#00FF00' : '#FF0000';
+        ctx.font = 'bold 40px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(gameState.won ? '🏆 WIN! 🏆' : '💥 CRASH! 💥', canvas.width / 2, canvas.height / 2 - 50);
+        ctx.fillText(game.won ? '🏆 WIN!' : '💥 CRASH!', canvas.width / 2, canvas.height / 2 - 50);
+        
+        ctx.fillStyle = '#fff';
+        ctx.font = '24px Arial';
+        ctx.fillText(game.won ? `Level ${game.level} Complete!` : `Retry Level ${game.level}`, canvas.width / 2, canvas.height / 2);
+        
+        if (!game.won) {
+            ctx.font = '20px Arial';
+            ctx.fillText('Tap SPACE to retry', canvas.width / 2, canvas.height / 2 + 50);
+        }
+    }
+    
+    // Shop
+    if (game.showShop) {
+        ctx.fillStyle = 'rgba(0,0,0,0.9)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 32px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('🛒 BALL SHOP', canvas.width / 2, 60);
         
         ctx.fillStyle = '#fff';
         ctx.font = '20px Arial';
-        ctx.fillText(gameState.won ? `Level ${gameState.level} Complete!` : `Retry Level ${gameState.level}`, canvas.width / 2, canvas.height / 2);
+        ctx.fillText(`💰 ${game.tokens} JVW Tokens`, canvas.width / 2, 100);
         
-        if (gameState.won) {
-            ctx.fillStyle = '#ffc107';
-            ctx.fillText(`+${10 + gameState.level * 5} JVW Tokens`, canvas.width / 2, canvas.height / 2 + 40);
-        }
+        SKINS.forEach((skin, i) => {
+            const y = 150 + i * 100;
+            const owned = game.ownedSkins.includes(i);
+            const equipped = i === game.currentSkin;
+            
+            // Skin preview
+            ctx.fillStyle = skin.color;
+            ctx.beginPath();
+            ctx.arc(60, y, 25, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Name
+            ctx.fillStyle = '#fff';
+            ctx.font = '20px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(skin.name, 100, y - 10);
+            
+            // Status
+            ctx.font = '16px Arial';
+            if (owned) {
+                if (equipped) {
+                    ctx.fillStyle = '#00FF00';
+                    ctx.fillText('✓ EQUIPPED', 100, y + 15);
+                } else {
+                    ctx.fillStyle = '#FFD700';
+                    ctx.fillText('Click to equip', 100, y + 15);
+                }
+            } else {
+                ctx.fillStyle = '#FFD700';
+                ctx.fillText(`${skin.cost} JVW`, 100, y + 15);
+                if (game.tokens >= skin.cost) {
+                    ctx.fillStyle = '#00FF00';
+                    ctx.fillText('Click to buy', 250, y + 15);
+                }
+            }
+        });
+        
+        ctx.fillStyle = '#888';
+        ctx.font = '18px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Press S to close', canvas.width / 2, canvas.height - 30);
     }
 }
 
-// Game loop
 function gameLoop() {
     update();
     draw();
     
-    // Update UI
-    document.getElementById('level').textContent = gameState.level;
-    document.getElementById('tokens').textContent = gameState.tokens;
-    document.getElementById('tier').textContent = TIERS[gameState.player.tier].name;
+    document.getElementById('level').textContent = game.level;
+    document.getElementById('tokens').textContent = game.tokens;
+    document.getElementById('tier').textContent = ['Tiny', 'Double', 'Swift', 'Shield', 'Cosmic'][game.player.tier];
     
     requestAnimationFrame(gameLoop);
 }
 
-// Controls
+// Touch controls
+let touchStartX = 0;
 document.getElementById('leftBtn').addEventListener('touchstart', (e) => {
     e.preventDefault();
-    if (gameState.player.lane > 0) gameState.player.lane--;
+    if (game.player.lane > 0) game.player.lane--;
 });
 
 document.getElementById('rightBtn').addEventListener('touchstart', (e) => {
     e.preventDefault();
-    if (gameState.player.lane < 2) gameState.player.lane++;
+    if (game.player.lane < 2) game.player.lane++;
 });
 
 document.getElementById('boostBtn').addEventListener('touchstart', (e) => {
     e.preventDefault();
-    gameState.player.boosting = true;
+    game.player.boosting = true;
 });
 
 document.getElementById('boostBtn').addEventListener('touchend', (e) => {
     e.preventDefault();
-    gameState.player.boosting = false;
+    game.player.boosting = false;
 });
 
-// Keyboard controls for desktop
+// Keyboard
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowLeft' && gameState.player.lane > 0) gameState.player.lane--;
-    if (e.key === 'ArrowRight' && gameState.player.lane < 2) gameState.player.lane++;
+    if (e.key === 'ArrowLeft' && game.player.lane > 0) game.player.lane--;
+    if (e.key === 'ArrowRight' && game.player.lane < 2) game.player.lane++;
     if (e.key === ' ') {
         e.preventDefault();
-        if (gameState.gameOver && !gameState.won && !gameState.showAd) {
-            gameState.player.tier = 0;
+        if (game.gameOver && !game.won && !game.showAd) {
             initLevel();
         } else {
-            gameState.player.boosting = true;
+            game.player.boosting = true;
         }
+    }
+    if (e.key === 's' || e.key === 'S') {
+        game.showShop = !game.showShop;
     }
 });
 
 document.addEventListener('keyup', (e) => {
-    if (e.key === ' ') gameState.player.boosting = false;
+    if (e.key === ' ') game.player.boosting = false;
 });
 
-// Start game
+// Shop clicks
+canvas.addEventListener('click', (e) => {
+    if (!game.showShop) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    SKINS.forEach((skin, i) => {
+        const skinY = 150 + i * 100;
+        if (y > skinY - 40 && y < skinY + 40) {
+            if (game.ownedSkins.includes(i)) {
+                game.currentSkin = i;
+                localStorage.setItem('currentSkin', i);
+                console.log('[SHOP] Equipped:', skin.name);
+            } else if (game.tokens >= skin.cost) {
+                game.tokens -= skin.cost;
+                game.ownedSkins.push(i);
+                game.currentSkin = i;
+                localStorage.setItem('tokens', game.tokens);
+                localStorage.setItem('ownedSkins', JSON.stringify(game.ownedSkins));
+                localStorage.setItem('currentSkin', i);
+                console.log('[SHOP] Purchased:', skin.name);
+            }
+        }
+    });
+});
+
 initLevel();
 gameLoop();
-
-console.log('[GAME] Magno.bp loaded successfully!');
-console.log('[AD] Ad link configured:', AD_LINK);
-console.log('[GAME] Obstacles generated:', gameState.obstacles.length);
-console.log('[GAME] Canvas size:', canvas.width, 'x', canvas.height);
+console.log('[GAME] Magno.bp loaded! Controls: ◀ ⚡ ▶ or Arrow Keys + Space');
