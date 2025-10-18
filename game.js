@@ -38,7 +38,13 @@ const SKINS = [
     { name: 'Fire', cost: 150, color: '#FF6400' },
     { name: 'Toxic', cost: 400, color: '#00FF64' },
     { name: 'Galaxy', cost: 800, color: '#9600FF' },
-    { name: 'Gold', cost: 1500, color: '#FFD700' }
+    { name: 'Gold', cost: 1500, color: '#FFD700' },
+    { name: 'Diamond', cost: 2500, color: '#B9F2FF' },
+    { name: 'Shadow', cost: 4000, color: '#2D2D2D' },
+    { name: 'Rainbow', cost: 6000, color: '#FF69B4' },
+    { name: 'Plasma', cost: 8500, color: '#00FFFF' },
+    { name: 'Cosmic', cost: 12000, color: '#8A2BE2' },
+    { name: 'Legendary', cost: 18000, color: '#FFD700' }
 ];
 
 function initLevel() {
@@ -115,7 +121,7 @@ function update() {
     const speed = game.player.boosting ? baseSpeed * 1.5 : baseSpeed;
     game.player.distance += speed;
     
-    // Collect orbs and earn tokens
+    // Collect blue orbs (no crash, earn tokens)
     game.orbs.forEach(orb => {
         if (!orb.collected && orb.lane === game.player.lane) {
             const dist = Math.abs(orb.y - game.player.distance - game.player.y);
@@ -123,28 +129,28 @@ function update() {
                 orb.collected = true;
                 game.orbsCollected++;
                 
-                // Earn 1 token per orb collected
+                // Earn 1 token per blue orb collected
                 game.tokens++;
                 localStorage.setItem('tokens', game.tokens);
                 
                 if (game.player.tier < 4) game.player.tier++;
-                console.log('[COLLECT] Orb collected! +1 token. Total:', game.tokens);
+                console.log('[COLLECT] Blue orb collected! +1 JVW token. Total:', game.tokens);
             }
         }
     });
     
-    // Check collisions - PRECISE detection
+    // Check red box collisions - PRECISE detection
     game.obstacles.forEach(obs => {
         if (!obs.hit && obs.lane === game.player.lane) {
             const obstacleWorldY = obs.y;
             const playerWorldY = game.player.distance + game.player.y;
             const dist = Math.abs(obstacleWorldY - playerWorldY);
             
-            // Only crash if actually touching (within 40 pixels)
+            // Only crash if actually touching red box (within 40 pixels)
             if (dist < 40) {
                 obs.hit = true;
                 game.gameOver = true;
-                console.log('[COLLISION] Hit obstacle at Y:', obstacleWorldY, 'Player at:', playerWorldY, 'Distance:', dist);
+                console.log('[COLLISION] Hit red box at Y:', obstacleWorldY, 'Player at:', playerWorldY, 'Distance:', dist);
                 setTimeout(() => showAd('crash'), 100);
             }
         }
@@ -156,16 +162,24 @@ function update() {
         game.won = true;
         game.gameOver = true;
         
-        // Level completion bonus
+        // Level completion bonus + special rewards
         const levelBonus = 50 + game.level * 10;
-        game.tokens += levelBonus;
+        let specialReward = 0;
+        
+        // Boss level rewards (every 5th level)
+        if (game.level % 5 === 0) {
+            specialReward = 100 + game.level * 5;
+            console.log('[REWARD] Boss level completed! +' + specialReward + ' bonus JVW tokens!');
+        }
+        
+        game.tokens += levelBonus + specialReward;
         localStorage.setItem('tokens', game.tokens);
         
         // Save level progress
         game.level++;
         localStorage.setItem('level', game.level);
         
-        console.log('[GAME] Level complete! +' + levelBonus + ' bonus tokens. Total:', game.tokens);
+        console.log('[GAME] Level complete! +' + (levelBonus + specialReward) + ' total tokens. Total:', game.tokens);
         setTimeout(() => {
             showAd('win');
             setTimeout(() => {
@@ -217,7 +231,7 @@ function draw() {
         ctx.stroke();
     });
     
-    // Orbs - optimized rendering
+    // Blue orbs - safe to collect
     ctx.fillStyle = '#00C8FF';
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 3;
@@ -232,13 +246,13 @@ function draw() {
         }
     });
     
-    // Obstacles - ALWAYS VISIBLE with debug info
+    // Red boxes - cause crash on contact
     let visibleObstacles = 0;
     game.obstacles.forEach(obs => {
         if (obs.hit) return;
         const y = obs.y - game.player.distance + game.player.y;
         
-        // Extended visibility range
+        // Extended visibility range - ensure all red boxes are visible
         if (y > -200 && y < canvas.height + 200) {
             visibleObstacles++;
             const x = LANES[obs.lane];
@@ -247,7 +261,7 @@ function draw() {
             ctx.fillStyle = 'rgba(0,0,0,0.3)';
             ctx.fillRect(x - 32, y + 35, 64, 10);
             
-            // Main red block - VERY BRIGHT
+            // Main red box - VERY BRIGHT and VISIBLE
             ctx.fillStyle = '#FF0000';
             ctx.fillRect(x - 35, y - 35, 70, 70);
             
@@ -354,13 +368,15 @@ function draw() {
         if (game.won) {
             ctx.fillStyle = '#FFD700';
             ctx.font = '20px Arial';
-            ctx.fillText(`Orbs: ${game.orbsCollected}/${game.totalOrbs}`, canvas.width / 2, canvas.height / 2 + 10);
-            ctx.fillText(`Tokens Earned: ${game.orbsCollected + 50 + (game.level - 1) * 10}`, canvas.width / 2, canvas.height / 2 + 40);
+            ctx.fillText(`Blue Orbs: ${game.orbsCollected}/${game.totalOrbs}`, canvas.width / 2, canvas.height / 2 + 10);
+            const levelBonus = 50 + (game.level - 1) * 10;
+            const bossBonus = ((game.level - 1) % 5 === 0) ? 100 + (game.level - 1) * 5 : 0;
+            ctx.fillText(`JVW Earned: ${game.orbsCollected + levelBonus + bossBonus}`, canvas.width / 2, canvas.height / 2 + 40);
         } else {
             ctx.font = '20px Arial';
             ctx.fillText('Tap SPACE to retry', canvas.width / 2, canvas.height / 2 + 20);
             ctx.fillStyle = '#FFD700';
-            ctx.fillText(`Orbs collected: ${game.orbsCollected}`, canvas.width / 2, canvas.height / 2 + 50);
+            ctx.fillText(`Blue orbs collected: ${game.orbsCollected}`, canvas.width / 2, canvas.height / 2 + 50);
         }
     }
     

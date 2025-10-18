@@ -51,7 +51,12 @@ BALL_SKINS = [
     {"name": "Toxic", "cost": 400, "colors": [(0, 255, 100), (0, 200, 50)], "trail": (0, 255, 100), "effect": "toxic"},
     {"name": "Galaxy", "cost": 800, "colors": [(150, 0, 255), (100, 0, 200)], "trail": (150, 0, 255), "effect": "galaxy"},
     {"name": "Gold", "cost": 1500, "colors": [(255, 215, 0), (255, 180, 0)], "trail": (255, 215, 0), "effect": "gold"},
-    {"name": "Diamond", "cost": 3000, "colors": [(200, 255, 255), (150, 200, 255)], "trail": (200, 255, 255), "effect": "diamond"},
+    {"name": "Diamond", "cost": 2500, "colors": [(200, 255, 255), (150, 200, 255)], "trail": (200, 255, 255), "effect": "diamond"},
+    {"name": "Shadow", "cost": 4000, "colors": [(45, 45, 45), (20, 20, 20)], "trail": (45, 45, 45), "effect": "shadow"},
+    {"name": "Rainbow", "cost": 6000, "colors": [(255, 105, 180), (255, 20, 147)], "trail": (255, 105, 180), "effect": "rainbow"},
+    {"name": "Plasma", "cost": 8500, "colors": [(0, 255, 255), (0, 200, 255)], "trail": (0, 255, 255), "effect": "plasma"},
+    {"name": "Cosmic", "cost": 12000, "colors": [(138, 43, 226), (75, 0, 130)], "trail": (138, 43, 226), "effect": "cosmic"},
+    {"name": "Legendary", "cost": 18000, "colors": [(255, 215, 0), (255, 140, 0)], "trail": (255, 215, 0), "effect": "legendary"},
 ]
 
 class Player:
@@ -180,7 +185,7 @@ class Orb:
             glow_size = 15 + math.sin(self.anim) * 2
             pygame.draw.circle(screen, color, (x, int(bounce_y)), int(glow_size))
             
-            # Main orb
+            # Main blue orb (safe to collect)
             pygame.draw.circle(screen, color, (x, int(bounce_y)), 12)
             pygame.draw.circle(screen, (255, 255, 255), (x, int(bounce_y)), 12, 2)
             
@@ -211,7 +216,7 @@ class Obstacle:
             pygame.draw.ellipse(screen, (0, 0, 0, 50), (shake_x - size - 5, int(y) + size, size * 2 + 10, 10))
             
             if self.type["shape"] == "box":
-                # Pulsing danger effect
+                # Red box - causes crash on contact
                 pulse = int(math.sin(self.anim * 2) * 10)
                 pygame.draw.rect(screen, self.type["color"], (shake_x - size, int(y) - size, size * 2, size * 2))
                 pygame.draw.rect(screen, (255, 200 + pulse, 0), (shake_x - size + 5, int(y) - size + 5, size * 2 - 10, size * 2 - 10), 2)
@@ -405,7 +410,7 @@ class Game:
                     obs.hit = True
                     obs.shake = 10
                     self.player.squash = 0.6
-                    # Always crash on red block collision
+                    # Always crash on red box collision
                     self.game_over = True
                     self.show_ad = True
                     self.ad_timer = 180
@@ -423,8 +428,15 @@ class Game:
             # Always show ad after winning
             self.show_ad = True
             self.ad_timer = 180
-            # Progressive token earnings: 10 + level * 5 (scales nicely)
+            # Progressive token earnings + boss rewards
             self.tokens_earned = 10 + self.level * 5
+            
+            # Boss level rewards (every 5th level)
+            if self.level % 5 == 0:
+                boss_bonus = 100 + self.level * 5
+                self.tokens_earned += boss_bonus
+                print(f"[REWARD] Boss level {self.level} completed! +{boss_bonus} bonus JVW tokens!")
+            
             self.save.data["tokens"] += self.tokens_earned
             self.save.data["level"] = max(self.save.data["level"], self.level + 1)
             self.save.save()
