@@ -1,0 +1,6 @@
+# GitHub Pages Configuration
+# This tells GitHub Pages to serve index.html as the main page
+
+theme: jekyll-theme-minimal
+title: Magno.bp
+description: Merge. Race. Dominate.
