@@ -517,7 +517,7 @@ canvas.addEventListener('click', (e) => {
     const y = e.clientY - rect.top;
     
     SKINS.forEach((skin, i) => {
-        const skinY = 150 + i * 100;
+        const skinY = 150 + i * 90;
         if (y > skinY - 40 && y < skinY + 40) {
             if (game.ownedSkins.includes(i)) {
                 game.currentSkin = i;
@@ -530,7 +530,9 @@ canvas.addEventListener('click', (e) => {
                 localStorage.setItem('tokens', game.tokens);
                 localStorage.setItem('ownedSkins', JSON.stringify(game.ownedSkins));
                 localStorage.setItem('currentSkin', i);
-                console.log('[SHOP] Purchased:', skin.name);
+                console.log('[SHOP] Purchased and equipped:', skin.name, 'for', skin.cost, 'tokens');
+            } else {
+                console.log('[SHOP] Cannot afford:', skin.name, '- Need', skin.cost - game.tokens, 'more tokens');
             }
         }
     });
