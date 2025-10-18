@@ -14,7 +14,7 @@ window.addEventListener('resize', resizeCanvas);
 
 // Game state
 let game = {
-    level: 1,
+    level: parseInt(localStorage.getItem('level')) || 1,
     tokens: parseInt(localStorage.getItem('tokens')) || 0,
     currentSkin: parseInt(localStorage.getItem('currentSkin')) || 0,
     ownedSkins: JSON.parse(localStorage.getItem('ownedSkins')) || [0],
@@ -26,7 +26,9 @@ let game = {
     showAd: false,
     showShop: false,
     adTimer: 0,
-    frame: 0
+    frame: 0,
+    orbsCollected: 0,
+    totalOrbs: 0
 };
 
 const LANES = [canvas.width / 6, canvas.width / 2, canvas.width * 5 / 6];
@@ -46,17 +48,24 @@ function initLevel() {
     game.gameOver = false;
     game.won = false;
     
-    // Generate orbs first
+    // Generate orbs first (more orbs as level increases)
     const orbPositions = [];
-    for (let i = 0; i < 40; i++) {
+    const orbCount = 40 + game.level * 5;
+    game.totalOrbs = orbCount;
+    game.orbsCollected = 0;
+    
+    for (let i = 0; i < orbCount; i++) {
         const lane = Math.floor(Math.random() * 3);
         const y = i * 200 + 500;
         game.orbs.push({ lane, y, collected: false });
         orbPositions.push({ lane, y });
     }
     
-    // Generate obstacles - NEVER overlap with orbs
-    for (let i = 0; i < 25; i++) {
+    // Generate obstacles - MORE as level increases, NEVER overlap with orbs
+    const obstacleCount = 20 + game.level * 3;
+    let obstaclesAdded = 0;
+    
+    for (let i = 0; i < obstacleCount && obstaclesAdded < obstacleCount; i++) {
         const y = 1200 + i * 250;
         const lane = Math.floor(Math.random() * 3);
         
@@ -68,6 +77,7 @@ function initLevel() {
         // Only add obstacle if it's safe
         if (!tooClose) {
             game.obstacles.push({ lane, y, hit: false });
+            obstaclesAdded++;
         }
     }
     
@@ -96,16 +106,26 @@ function update() {
     if (game.gameOver || game.showAd || game.showShop) return;
     
     game.frame++;
-    const speed = game.player.boosting ? game.player.speed * 1.5 : game.player.speed;
+    
+    // Speed increases with level (difficulty scaling)
+    const baseSpeed = 5 + (game.level * 0.3);
+    const speed = game.player.boosting ? baseSpeed * 1.5 : baseSpeed;
     game.player.distance += speed;
     
-    // Collect orbs
+    // Collect orbs and earn tokens
     game.orbs.forEach(orb => {
         if (!orb.collected && orb.lane === game.player.lane) {
             const dist = Math.abs(orb.y - game.player.distance - game.player.y);
             if (dist < 50) {
                 orb.collected = true;
+                game.orbsCollected++;
+                
+                // Earn 1 token per orb collected
+                game.tokens++;
+                localStorage.setItem('tokens', game.tokens);
+                
                 if (game.player.tier < 4) game.player.tier++;
+                console.log('[COLLECT] Orb collected! +1 token. Total:', game.tokens);
             }
         }
     });
@@ -127,19 +147,25 @@ function update() {
         }
     });
     
-    // Check win
-    const finishLine = 6000;
+    // Check win (finish line gets longer with level)
+    const finishLine = 6000 + (game.level * 500);
     if (game.player.distance >= finishLine) {
         game.won = true;
         game.gameOver = true;
-        const reward = 10 + game.level * 5;
-        game.tokens += reward;
+        
+        // Level completion bonus
+        const levelBonus = 50 + game.level * 10;
+        game.tokens += levelBonus;
         localStorage.setItem('tokens', game.tokens);
-        console.log('[GAME] Level complete! +' + reward + ' tokens');
+        
+        // Save level progress
+        game.level++;
+        localStorage.setItem('level', game.level);
+        
+        console.log('[GAME] Level complete! +' + levelBonus + ' bonus tokens. Total:', game.tokens);
         setTimeout(() => {
             showAd('win');
             setTimeout(() => {
-                game.level++;
                 initLevel();
             }, 3000);
         }, 100);
@@ -154,12 +180,36 @@ function draw() {
     ctx.fillStyle = '#0a0514';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
+    // Progress bar at top
+    const finishLine = 6000 + (game.level * 500);
+    const progress = Math.min(1, game.player.distance / finishLine);
+    
+    ctx.fillStyle = '#333';
+    ctx.fillRect(10, 10, canvas.width - 20, 20);
+    
+    const gradient = ctx.createLinearGradient(10, 10, canvas.width - 10, 10);
+    gradient.addColorStop(0, '#00FF00');
+    gradient.addColorStop(0.5, '#FFFF00');
+    gradient.addColorStop(1, '#FF0000');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(10, 10, (canvas.width - 20) * progress, 20);
+    
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(10, 10, canvas.width - 20, 20);
+    
+    // Progress text
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${Math.floor(progress * 100)}%`, canvas.width / 2, 24);
+    
     // Lanes
     ctx.strokeStyle = '#3c3c50';
     ctx.lineWidth = 2;
     LANES.forEach(x => {
         ctx.beginPath();
-        ctx.moveTo(x, 0);
+        ctx.moveTo(x, 40);
         ctx.lineTo(x, canvas.height);
         ctx.stroke();
     });
@@ -261,15 +311,22 @@ function draw() {
         ctx.fillStyle = game.won ? '#00FF00' : '#FF0000';
         ctx.font = 'bold 40px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(game.won ? '🏆 WIN!' : '💥 CRASH!', canvas.width / 2, canvas.height / 2 - 50);
+        ctx.fillText(game.won ? '🏆 WIN!' : '💥 CRASH!', canvas.width / 2, canvas.height / 2 - 80);
         
         ctx.fillStyle = '#fff';
         ctx.font = '24px Arial';
-        ctx.fillText(game.won ? `Level ${game.level} Complete!` : `Retry Level ${game.level}`, canvas.width / 2, canvas.height / 2);
+        ctx.fillText(game.won ? `Level ${game.level - 1} Complete!` : `Level ${game.level} Failed`, canvas.width / 2, canvas.height / 2 - 30);
         
-        if (!game.won) {
+        if (game.won) {
+            ctx.fillStyle = '#FFD700';
             ctx.font = '20px Arial';
-            ctx.fillText('Tap SPACE to retry', canvas.width / 2, canvas.height / 2 + 50);
+            ctx.fillText(`Orbs: ${game.orbsCollected}/${game.totalOrbs}`, canvas.width / 2, canvas.height / 2 + 10);
+            ctx.fillText(`Tokens Earned: ${game.orbsCollected + 50 + (game.level - 1) * 10}`, canvas.width / 2, canvas.height / 2 + 40);
+        } else {
+            ctx.font = '20px Arial';
+            ctx.fillText('Tap SPACE to retry', canvas.width / 2, canvas.height / 2 + 20);
+            ctx.fillStyle = '#FFD700';
+            ctx.fillText(`Orbs collected: ${game.orbsCollected}`, canvas.width / 2, canvas.height / 2 + 50);
         }
     }
     
@@ -286,6 +343,10 @@ function draw() {
         ctx.fillStyle = '#fff';
         ctx.font = '20px Arial';
         ctx.fillText(`💰 ${game.tokens} JVW Tokens`, canvas.width / 2, 100);
+        
+        ctx.fillStyle = '#aaa';
+        ctx.font = '14px Arial';
+        ctx.fillText('Earn tokens by collecting blue orbs!', canvas.width / 2, 125);
         
         SKINS.forEach((skin, i) => {
             const y = 150 + i * 100;
@@ -345,7 +406,8 @@ function gameLoop(currentTime) {
     if (game.frame % 10 === 0) {
         document.getElementById('level').textContent = game.level;
         document.getElementById('tokens').textContent = game.tokens;
-        document.getElementById('tier').textContent = ['Tiny', 'Double', 'Swift', 'Shield', 'Cosmic'][game.player.tier];
+        const tierNames = ['Tiny', 'Double', 'Swift', 'Shield', 'Cosmic'];
+        document.getElementById('tier').textContent = tierNames[game.player.tier] || 'Tiny';
     }
     
     requestAnimationFrame(gameLoop);
