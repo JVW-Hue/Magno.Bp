@@ -72,14 +72,25 @@ function initLevel() {
         });
     }
     
-    // Generate obstacles (smart placement)
+    // Generate obstacles (smart placement - always visible)
     const finishLine = 5000 + gameState.level * 500;
-    for (let i = 0; i < 20 + gameState.level; i++) {
-        const y = Math.random() * (finishLine - 2000) + 1500;
-        const blockedLanes = Math.random() < 0.5 ? 1 : 2;
-        const lanes = [0, 1, 2].sort(() => Math.random() - 0.5).slice(0, blockedLanes);
+    const obstacleCount = 30 + gameState.level * 2;
+    
+    for (let i = 0; i < obstacleCount; i++) {
+        const y = 1000 + (i * 200) + Math.random() * 100;
         
-        lanes.forEach(lane => {
+        // Block 1 or 2 lanes randomly (never all 3)
+        const blockedLanes = Math.random() < 0.6 ? 1 : 2;
+        const availableLanes = [0, 1, 2];
+        const selectedLanes = [];
+        
+        for (let j = 0; j < blockedLanes; j++) {
+            const randomIndex = Math.floor(Math.random() * availableLanes.length);
+            selectedLanes.push(availableLanes[randomIndex]);
+            availableLanes.splice(randomIndex, 1);
+        }
+        
+        selectedLanes.forEach(lane => {
             gameState.obstacles.push({ lane, y, hit: false });
         });
     }
@@ -130,13 +141,15 @@ function update() {
         }
     });
     
-    // Check obstacle collision
+    // Check obstacle collision (more accurate)
     gameState.obstacles.forEach(obs => {
         if (!obs.hit && obs.lane === gameState.player.lane) {
-            const dist = Math.abs(obs.y - gameState.player.distance - gameState.player.y);
-            if (dist < 40) {
+            const obstacleY = obs.y - gameState.player.distance;
+            const dist = Math.abs(obstacleY - gameState.player.y);
+            if (dist < 45) {
                 obs.hit = true;
                 gameState.gameOver = true;
+                console.log('[GAME] Crashed into obstacle!');
                 showAd('crash');
             }
         }
@@ -162,8 +175,11 @@ function update() {
 
 // Draw game
 function draw() {
-    // Clear
-    ctx.fillStyle = '#0f0520';
+    // Clear with gradient background
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, '#0f0520');
+    gradient.addColorStop(1, '#1a0a2e');
+    ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     // Draw lanes
@@ -191,16 +207,33 @@ function draw() {
         }
     });
     
-    // Draw obstacles
+    // Draw obstacles (red blocks)
     gameState.obstacles.forEach(obs => {
         if (obs.hit) return;
         const y = obs.y - gameState.player.distance + gameState.player.y;
-        if (y > -50 && y < canvas.height + 50) {
+        if (y > -100 && y < canvas.height + 100) {
+            const x = LANES[obs.lane];
+            
+            // Red danger block
             ctx.fillStyle = '#ff3232';
-            ctx.fillRect(LANES[obs.lane] - 25, y - 25, 50, 50);
+            ctx.fillRect(x - 30, y - 30, 60, 60);
+            
+            // Yellow warning border
             ctx.strokeStyle = '#ffc800';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(LANES[obs.lane] - 20, y - 20, 40, 40);
+            ctx.lineWidth = 4;
+            ctx.strokeRect(x - 28, y - 28, 56, 56);
+            
+            // Warning stripes
+            ctx.fillStyle = '#ffc800';
+            ctx.fillRect(x - 25, y - 25, 50, 10);
+            ctx.fillRect(x - 25, y, 50, 10);
+            
+            // Danger symbol
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 24px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('!', x, y);
         }
     });
     
@@ -307,3 +340,5 @@ gameLoop();
 
 console.log('[GAME] Magno.bp loaded successfully!');
 console.log('[AD] Ad link configured:', AD_LINK);
+console.log('[GAME] Obstacles generated:', gameState.obstacles.length);
+console.log('[GAME] Canvas size:', canvas.width, 'x', canvas.height);
