@@ -46,23 +46,32 @@ function initLevel() {
     game.gameOver = false;
     game.won = false;
     
-    // Generate orbs
+    // Generate orbs first
+    const orbPositions = [];
     for (let i = 0; i < 40; i++) {
-        game.orbs.push({
-            lane: Math.floor(Math.random() * 3),
-            y: i * 200 + 500,
-            collected: false
-        });
+        const lane = Math.floor(Math.random() * 3);
+        const y = i * 200 + 500;
+        game.orbs.push({ lane, y, collected: false });
+        orbPositions.push({ lane, y });
     }
     
-    // Generate obstacles - ALWAYS VISIBLE
+    // Generate obstacles - NEVER overlap with orbs
     for (let i = 0; i < 25; i++) {
         const y = 1200 + i * 250;
         const lane = Math.floor(Math.random() * 3);
-        game.obstacles.push({ lane, y, hit: false });
+        
+        // Check if obstacle would overlap with any orb
+        const tooClose = orbPositions.some(orb => 
+            orb.lane === lane && Math.abs(orb.y - y) < 150
+        );
+        
+        // Only add obstacle if it's safe
+        if (!tooClose) {
+            game.obstacles.push({ lane, y, hit: false });
+        }
     }
     
-    console.log('[GAME] Level initialized with', game.obstacles.length, 'obstacles');
+    console.log('[GAME] Level initialized:', game.orbs.length, 'orbs,', game.obstacles.length, 'obstacles');
 }
 
 function showAd(reason) {
@@ -101,15 +110,18 @@ function update() {
         }
     });
     
-    // Check collisions
+    // Check collisions - PRECISE detection
     game.obstacles.forEach(obs => {
         if (!obs.hit && obs.lane === game.player.lane) {
-            const obstacleScreenY = obs.y - game.player.distance + game.player.y;
-            const dist = Math.abs(obstacleScreenY - game.player.y);
-            if (dist < 50) {
+            const obstacleWorldY = obs.y;
+            const playerWorldY = game.player.distance + game.player.y;
+            const dist = Math.abs(obstacleWorldY - playerWorldY);
+            
+            // Only crash if actually touching (within 40 pixels)
+            if (dist < 40) {
                 obs.hit = true;
                 game.gameOver = true;
-                console.log('[GAME] CRASHED!');
+                console.log('[COLLISION] Hit obstacle at Y:', obstacleWorldY, 'Player at:', playerWorldY, 'Distance:', dist);
                 setTimeout(() => showAd('crash'), 100);
             }
         }
@@ -135,6 +147,9 @@ function update() {
 }
 
 function draw() {
+    // Clear canvas efficiently
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
     // Background
     ctx.fillStyle = '#0a0514';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -149,22 +164,22 @@ function draw() {
         ctx.stroke();
     });
     
-    // Orbs
+    // Orbs - optimized rendering
+    ctx.fillStyle = '#00C8FF';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
     game.orbs.forEach(orb => {
         if (orb.collected) return;
         const y = orb.y - game.player.distance + game.player.y;
         if (y > -50 && y < canvas.height + 50) {
-            ctx.fillStyle = '#00C8FF';
             ctx.beginPath();
             ctx.arc(LANES[orb.lane], y, 15, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 3;
             ctx.stroke();
         }
     });
     
-    // Obstacles - BIG AND VISIBLE
+    // Obstacles - BIG AND VISIBLE (optimized)
     game.obstacles.forEach(obs => {
         if (obs.hit) return;
         const y = obs.y - game.player.distance + game.player.y;
@@ -186,9 +201,9 @@ function draw() {
             
             // Warning stripes
             ctx.fillStyle = '#FFFF00';
-            for (let i = 0; i < 3; i++) {
-                ctx.fillRect(x - 30, y - 25 + i * 20, 60, 8);
-            }
+            ctx.fillRect(x - 30, y - 25, 60, 8);
+            ctx.fillRect(x - 30, y - 5, 60, 8);
+            ctx.fillRect(x - 30, y + 15, 60, 8);
             
             // Danger symbol
             ctx.fillStyle = '#FFFFFF';
@@ -316,13 +331,22 @@ function draw() {
     }
 }
 
-function gameLoop() {
+// Optimized game loop for smooth 60 FPS
+let lastTime = 0;
+function gameLoop(currentTime) {
+    const deltaTime = currentTime - lastTime;
+    lastTime = currentTime;
+    
+    // Update and draw
     update();
     draw();
     
-    document.getElementById('level').textContent = game.level;
-    document.getElementById('tokens').textContent = game.tokens;
-    document.getElementById('tier').textContent = ['Tiny', 'Double', 'Swift', 'Shield', 'Cosmic'][game.player.tier];
+    // Update UI (less frequently for performance)
+    if (game.frame % 10 === 0) {
+        document.getElementById('level').textContent = game.level;
+        document.getElementById('tokens').textContent = game.tokens;
+        document.getElementById('tier').textContent = ['Tiny', 'Double', 'Swift', 'Shield', 'Cosmic'][game.player.tier];
+    }
     
     requestAnimationFrame(gameLoop);
 }
@@ -398,6 +422,9 @@ canvas.addEventListener('click', (e) => {
     });
 });
 
+// Start game
 initLevel();
-gameLoop();
+requestAnimationFrame(gameLoop);
 console.log('[GAME] Magno.bp loaded! Controls: ◀ ⚡ ▶ or Arrow Keys + Space');
+console.log('[GAME] Collision detection: Precise 40px radius');
+console.log('[GAME] Obstacles never overlap with orbs (150px safety margin)');
