@@ -19,16 +19,16 @@ let game = {
     currentSkin: parseInt(localStorage.getItem('currentSkin')) || 0,
     ownedSkins: JSON.parse(localStorage.getItem('ownedSkins')) || [0],
     player: { lane: 1, y: 400, tier: 0, distance: 0, speed: 5, boosting: false },
-    orbs: [],
-    obstacles: [],
+    blueBalls: [],
+    redBoxes: [],
     gameOver: false,
     won: false,
     showAd: false,
     showShop: false,
     adTimer: 0,
     frame: 0,
-    orbsCollected: 0,
-    totalOrbs: 0,
+    ballsCollected: 0,
+    totalBalls: 0,
     debugMode: false
 };
 
@@ -48,48 +48,48 @@ const SKINS = [
 ];
 
 function initLevel() {
-    game.orbs = [];
-    game.obstacles = [];
+    game.blueBalls = [];
+    game.redBoxes = [];
     game.player.distance = 0;
     game.player.tier = 0;
     game.gameOver = false;
     game.won = false;
     
-    // Generate orbs first (more orbs as level increases)
-    const orbPositions = [];
-    const orbCount = 40 + game.level * 5;
-    game.totalOrbs = orbCount;
-    game.orbsCollected = 0;
+    // Generate blue balls first (safe to collect)
+    const ballPositions = [];
+    const ballCount = 50 + game.level * 5;
+    game.totalBalls = ballCount;
+    game.ballsCollected = 0;
     
-    for (let i = 0; i < orbCount; i++) {
+    for (let i = 0; i < ballCount; i++) {
         const lane = Math.floor(Math.random() * 3);
-        const y = i * 200 + 500;
-        game.orbs.push({ lane, y, collected: false });
-        orbPositions.push({ lane, y });
+        const y = i * 150 + 600;
+        game.blueBalls.push({ lane, y, collected: false });
+        ballPositions.push({ lane, y });
     }
     
-    // Generate obstacles - MORE as level increases, NEVER overlap with orbs
-    const obstacleCount = 20 + game.level * 3;
-    let obstaclesAdded = 0;
+    // Generate red boxes - dangerous obstacles
+    const boxCount = 15 + game.level * 2;
+    let boxesAdded = 0;
     
-    for (let i = 0; i < obstacleCount && obstaclesAdded < obstacleCount; i++) {
-        const y = 1200 + i * 250;
+    for (let i = 0; i < boxCount && boxesAdded < boxCount; i++) {
+        const y = 1000 + i * 300;
         const lane = Math.floor(Math.random() * 3);
         
-        // Check if obstacle would overlap with any orb
-        const tooClose = orbPositions.some(orb => 
-            orb.lane === lane && Math.abs(orb.y - y) < 150
+        // Check if red box would overlap with any blue ball
+        const tooClose = ballPositions.some(ball => 
+            ball.lane === lane && Math.abs(ball.y - y) < 120
         );
         
-        // Only add obstacle if it's safe
+        // Only add red box if it's safe
         if (!tooClose) {
-            game.obstacles.push({ lane, y, hit: false });
-            obstaclesAdded++;
+            game.redBoxes.push({ lane, y, hit: false });
+            boxesAdded++;
         }
     }
     
-    console.log('[GAME] Level initialized:', game.orbs.length, 'orbs,', game.obstacles.length, 'obstacles');
-    console.log('[DEBUG] First 5 obstacles:', game.obstacles.slice(0, 5).map(o => `Lane ${o.lane}, Y: ${o.y}`));
+    console.log('[GAME] Level initialized:', game.blueBalls.length, 'blue balls,', game.redBoxes.length, 'red boxes');
+    console.log('[DEBUG] First 5 red boxes:', game.redBoxes.slice(0, 5).map(b => `Lane ${b.lane}, Y: ${b.y}`));
     console.log('[DEBUG] Player starts at Y:', game.player.y, 'Distance:', game.player.distance);
 }
 
@@ -121,36 +121,39 @@ function update() {
     const speed = game.player.boosting ? baseSpeed * 1.5 : baseSpeed;
     game.player.distance += speed;
     
-    // Collect blue orbs (no crash, earn tokens)
-    game.orbs.forEach(orb => {
-        if (!orb.collected && orb.lane === game.player.lane) {
-            const dist = Math.abs(orb.y - game.player.distance - game.player.y);
-            if (dist < 50) {
-                orb.collected = true;
-                game.orbsCollected++;
+    // Collect blue balls (safe, no crash, earn JVW tokens)
+    game.blueBalls.forEach(ball => {
+        if (!ball.collected && ball.lane === game.player.lane) {
+            const ballWorldY = ball.y;
+            const playerWorldY = game.player.distance + game.player.y;
+            const dist = Math.abs(ballWorldY - playerWorldY);
+            
+            if (dist < 45) {
+                ball.collected = true;
+                game.ballsCollected++;
                 
-                // Earn 1 token per blue orb collected
+                // Earn 1 JVW token per blue ball collected
                 game.tokens++;
                 localStorage.setItem('tokens', game.tokens);
                 
                 if (game.player.tier < 4) game.player.tier++;
-                console.log('[COLLECT] Blue orb collected! +1 JVW token. Total:', game.tokens);
+                console.log('[COLLECT] Blue ball collected! +1 JVW token. Total:', game.tokens);
             }
         }
     });
     
-    // Check red box collisions - PRECISE detection
-    game.obstacles.forEach(obs => {
-        if (!obs.hit && obs.lane === game.player.lane) {
-            const obstacleWorldY = obs.y;
+    // Check red box collisions - causes crash
+    game.redBoxes.forEach(box => {
+        if (!box.hit && box.lane === game.player.lane) {
+            const boxWorldY = box.y;
             const playerWorldY = game.player.distance + game.player.y;
-            const dist = Math.abs(obstacleWorldY - playerWorldY);
+            const dist = Math.abs(boxWorldY - playerWorldY);
             
-            // Only crash if actually touching red box (within 40 pixels)
-            if (dist < 40) {
-                obs.hit = true;
+            // Crash if touching red box (within 35 pixels)
+            if (dist < 35) {
+                box.hit = true;
                 game.gameOver = true;
-                console.log('[COLLISION] Hit red box at Y:', obstacleWorldY, 'Player at:', playerWorldY, 'Distance:', dist);
+                console.log('[CRASH] Hit red box at Y:', boxWorldY, 'Player at:', playerWorldY, 'Distance:', dist);
                 setTimeout(() => showAd('crash'), 100);
             }
         }
@@ -231,66 +234,95 @@ function draw() {
         ctx.stroke();
     });
     
-    // Blue orbs - safe to collect
-    ctx.fillStyle = '#00C8FF';
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 3;
-    game.orbs.forEach(orb => {
-        if (orb.collected) return;
-        const y = orb.y - game.player.distance + game.player.y;
-        if (y > -50 && y < canvas.height + 50) {
+    // Draw blue balls - safe to collect, earn JVW tokens
+    let visibleBalls = 0;
+    game.blueBalls.forEach(ball => {
+        if (ball.collected) return;
+        const y = ball.y - game.player.distance + game.player.y;
+        
+        if (y > -100 && y < canvas.height + 100) {
+            visibleBalls++;
+            const x = LANES[ball.lane];
+            
+            // Blue ball glow
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#00BFFF';
+            ctx.fillStyle = '#00BFFF';
             ctx.beginPath();
-            ctx.arc(LANES[orb.lane], y, 15, 0, Math.PI * 2);
+            ctx.arc(x, y, 18, 0, Math.PI * 2);
             ctx.fill();
-            ctx.stroke();
+            ctx.shadowBlur = 0;
+            
+            // Blue ball body
+            ctx.fillStyle = '#00BFFF';
+            ctx.beginPath();
+            ctx.arc(x, y, 15, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // White highlight
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath();
+            ctx.arc(x - 5, y - 5, 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Debug mode - show collection box
+            if (game.debugMode) {
+                ctx.strokeStyle = '#00FF00';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x - 22, y - 22, 44, 44);
+                ctx.fillStyle = '#00FF00';
+                ctx.font = '10px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('SAFE', x, y - 30);
+            }
         }
     });
     
-    // Red boxes - cause crash on contact
-    let visibleObstacles = 0;
-    game.obstacles.forEach(obs => {
-        if (obs.hit) return;
-        const y = obs.y - game.player.distance + game.player.y;
+    // Draw red boxes - dangerous, cause crash
+    let visibleBoxes = 0;
+    game.redBoxes.forEach(box => {
+        if (box.hit) return;
+        const y = box.y - game.player.distance + game.player.y;
         
-        // Extended visibility range - ensure all red boxes are visible
-        if (y > -200 && y < canvas.height + 200) {
-            visibleObstacles++;
-            const x = LANES[obs.lane];
+        if (y > -100 && y < canvas.height + 100) {
+            visibleBoxes++;
+            const x = LANES[box.lane];
             
-            // Shadow
-            ctx.fillStyle = 'rgba(0,0,0,0.3)';
-            ctx.fillRect(x - 32, y + 35, 64, 10);
+            // Red box shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            ctx.fillRect(x - 30, y + 30, 60, 8);
             
-            // Main red box - VERY BRIGHT and VISIBLE
+            // Main red box - BRIGHT RED
             ctx.fillStyle = '#FF0000';
-            ctx.fillRect(x - 35, y - 35, 70, 70);
+            ctx.fillRect(x - 30, y - 30, 60, 60);
             
-            // Yellow warning border - THICK
+            // Yellow warning border
             ctx.strokeStyle = '#FFFF00';
-            ctx.lineWidth = 6;
-            ctx.strokeRect(x - 35, y - 35, 70, 70);
+            ctx.lineWidth = 4;
+            ctx.strokeRect(x - 30, y - 30, 60, 60);
             
             // Warning stripes
             ctx.fillStyle = '#FFFF00';
-            ctx.fillRect(x - 30, y - 25, 60, 8);
-            ctx.fillRect(x - 30, y - 5, 60, 8);
-            ctx.fillRect(x - 30, y + 15, 60, 8);
+            for (let i = 0; i < 3; i++) {
+                ctx.fillRect(x - 25, y - 20 + i * 15, 50, 5);
+            }
             
             // Danger symbol
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 32px Arial';
+            ctx.font = 'bold 24px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('!', x, y);
             
             // Debug mode - show collision box
             if (game.debugMode) {
-                ctx.strokeStyle = '#00FF00';
+                ctx.strokeStyle = '#FF0000';
                 ctx.lineWidth = 2;
-                ctx.strokeRect(x - 40, y - 40, 80, 80);
-                ctx.fillStyle = '#00FF00';
-                ctx.font = '12px Arial';
-                ctx.fillText(`Y:${Math.floor(obs.y)}`, x, y - 50);
+                ctx.strokeRect(x - 35, y - 35, 70, 70);
+                ctx.fillStyle = '#FF0000';
+                ctx.font = '10px Arial';
+                ctx.fillText('CRASH', x, y - 45);
+                ctx.fillText(`Y:${Math.floor(box.y)}`, x, y + 45);
             }
         }
     });
@@ -298,11 +330,14 @@ function draw() {
     // Debug info
     if (game.debugMode) {
         ctx.fillStyle = '#00FF00';
-        ctx.font = '14px Arial';
+        ctx.font = '12px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText(`Visible obstacles: ${visibleObstacles}`, 10, canvas.height - 60);
-        ctx.fillText(`Player Y: ${Math.floor(game.player.distance + game.player.y)}`, 10, canvas.height - 40);
-        ctx.fillText(`Total obstacles: ${game.obstacles.length}`, 10, canvas.height - 20);
+        ctx.fillText(`Blue balls visible: ${visibleBalls}`, 10, canvas.height - 80);
+        ctx.fillText(`Red boxes visible: ${visibleBoxes}`, 10, canvas.height - 65);
+        ctx.fillText(`Player Y: ${Math.floor(game.player.distance + game.player.y)}`, 10, canvas.height - 50);
+        ctx.fillText(`Total blue balls: ${game.blueBalls.length}`, 10, canvas.height - 35);
+        ctx.fillText(`Total red boxes: ${game.redBoxes.length}`, 10, canvas.height - 20);
+        ctx.fillText(`JVW Tokens: ${game.tokens}`, 10, canvas.height - 5);
     }
     
     // Player (always on top)
@@ -368,15 +403,15 @@ function draw() {
         if (game.won) {
             ctx.fillStyle = '#FFD700';
             ctx.font = '20px Arial';
-            ctx.fillText(`Blue Orbs: ${game.orbsCollected}/${game.totalOrbs}`, canvas.width / 2, canvas.height / 2 + 10);
+            ctx.fillText(`Blue Balls: ${game.ballsCollected}/${game.totalBalls}`, canvas.width / 2, canvas.height / 2 + 10);
             const levelBonus = 50 + (game.level - 1) * 10;
             const bossBonus = ((game.level - 1) % 5 === 0) ? 100 + (game.level - 1) * 5 : 0;
-            ctx.fillText(`JVW Earned: ${game.orbsCollected + levelBonus + bossBonus}`, canvas.width / 2, canvas.height / 2 + 40);
+            ctx.fillText(`JVW Earned: ${game.ballsCollected + levelBonus + bossBonus}`, canvas.width / 2, canvas.height / 2 + 40);
         } else {
             ctx.font = '20px Arial';
             ctx.fillText('Tap SPACE to retry', canvas.width / 2, canvas.height / 2 + 20);
             ctx.fillStyle = '#FFD700';
-            ctx.fillText(`Blue orbs collected: ${game.orbsCollected}`, canvas.width / 2, canvas.height / 2 + 50);
+            ctx.fillText(`Blue balls collected: ${game.ballsCollected}`, canvas.width / 2, canvas.height / 2 + 50);
         }
     }
     
@@ -396,7 +431,7 @@ function draw() {
         
         ctx.fillStyle = '#aaa';
         ctx.font = '14px Arial';
-        ctx.fillText('Earn tokens by collecting blue orbs!', canvas.width / 2, 125);
+        ctx.fillText('Earn JVW tokens by collecting blue balls!', canvas.width / 2, 125);
         
         SKINS.forEach((skin, i) => {
             const y = 150 + i * 100;
